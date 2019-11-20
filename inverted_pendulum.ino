@@ -1,132 +1,90 @@
 //倒立振子
-#include <MsTimer2.h>
-#include <MPU9250_asukiaaa.h>
+//#include <MPU9250_asukiaaa.h>//MPU9250のライブラリ
 #include "kal/kal.h"
 
 //debug
 #define DEBUG 0
-#define MOTOR_DEBUG 0
-//offset
-#define GY_OFFSET 0.73186
-//motor control gain
-#define KP 90.0
-#define KD 0.2
-#define KDD 0.05
 
-using namespace kal;
+//motor
+#define MOTOR_NUM 2//片方はエンコーダのみ
+kal::nxtmotor motor[MOTOR_NUM];
 
-//9 axis sensor
-MPU9250 mySensor;
-uint8_t sensorId;
-float aX, aY, aZ, aSqrt, gX, gY, gZ, mDirection, mX, mY, mZ;
-float phi = 0.0;
-float phi_acc;
-
-int cnt=0;
-//posture estimation
-KalmanFilter<double> kphi(0.0,0.149*DEG2RAD*0.149*DEG2RAD,1.0);
-HPF<double> hdphi(0.0,0.1);
-
-//wave generator
-wave sin_wave(0.0,PI/3,1.0);
-//differentiator
-Diff<double> wheel_dtheta(0.0,100.0);
-Diff<double> wheel_d2theta(0.0,5.0);
+//reference
+kal::wave sin_wave(0.0,PI/3,0.5,SIN);
 
 //robotdata
-RobotData ref;
-RobotData state;
-RobotData ref_bfr;
+kal::RobotData<double> ref[MOTOR_NUM];
+kal::RobotData<double> state[MOTOR_NUM];
 
-void timerFire() {
-  //9軸センサ取得
-  aX = mySensor.accelX();
-  aY = mySensor.accelY();
-  aZ = mySensor.accelZ();
-//  gX = mySensor.gyroX();
-  gY = mySensor.gyroY() + GY_OFFSET;
-//  gZ = mySensor.gyroZ();
-  phi += gY * Ts;
-  phi_acc = atan2(aZ,-aX);//加速度センサからの姿勢推定
-  kphi.update(gY*DEG2RAD,phi_acc);
-  hdphi.update(gY*DEG2RAD);
+//differentiator
+kal::Diff<double> d_ref[MOTOR_NUM];
+kal::Diff<double> d_st[MOTOR_NUM];
+kal::Diff<double> d2_ref[MOTOR_NUM];
+kal::Diff<double> d2_st[MOTOR_NUM];
 
-//状態取得
-   state.phi = kphi.x_est+2.25*DEG2RAD;
-   state.dphi = gY*DEG2RAD;
-   state.theta = wheel_angle;
-   wheel_dtheta.update(state.theta);
-   state.dtheta =wheel_dtheta.x;
-   wheel_d2theta.update(state.dtheta);
-   state.d2theta = wheel_d2theta.x;
-//目標値計算
+double t = 0.0;//time
+
+//timer関連
+hw_timer_t * timer = NULL;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+
+void IRAM_ATTR onTimer() {  /* this function must be placed in IRAM */
+  portENTER_CRITICAL_ISR(&timerMux);
+  //control---------------------------------------------------------------------------------------------------------------------------/
+  t += Ts;
+  //状態取得
+  for(int i=0;i<MOTOR_NUM;i++){
+    motor[i].get_angle(state[i].q);
+    d_st[i].update(state[i].q,state[i].dq);
+    d2_st[i].update(state[i].dq,state[i].d2q);    
+  }  
+  //目標値計算
   sin_wave.update();
-  //ref.d2theta = sin_wave.output;
-//  ref.d2theta = -(+0.516 * state.theta + 1.2477 * state.dtheta + 1016.8614 * state.phi + 87.5655 *state.dphi);
-    ref.d2theta = -(+0.516 * state.theta + 0.2477 * state.dtheta + 1016.8614 * state.phi + 87.5655 *state.dphi);  
-  ref.dtheta = trape_integral(Ts,ref_bfr.d2theta,ref.d2theta,ref.dtheta);
-  ref.theta = trape_integral(Ts,ref_bfr.dtheta,ref.dtheta,ref.theta);//@todo摩擦補償
-  dead_zone_compensate(ref_bfr.dtheta,ref.dtheta,ref.theta,10.0*DEG2RAD);//不感帯補償
-  //ref.theta = sin_wave.output;
-//出力計算
-  double u = KP*(ref.theta-state.theta) + KD * (ref.dtheta - state.dtheta) + KDD * (ref.d2theta - state.d2theta);
-  if(abs(state.phi*RAD2DEG)>60.0){
-    u = 0.0;
+  for(int i=0;i<MOTOR_NUM;i++){
+    ref[i].q = sin_wave.output;
+    d_ref[i].update(ref[i].q,ref[i].dq);
+    d2_ref[i].update(ref[i].dq,ref[i].d2q);
   }
-  motor(u);
+  
+  //出力計算
+//  for(int i=0;i<MOTOR_NUM-1;i++){
+//    double u = KP*(ref[i].q-state[i].q) + KD * (ref[i].dq - state[i].dq);
+//    motor[i].drive(u);
+//  }
 #if DEBUG
-  Serial.print(String(state.phi*RAD2DEG));
-  Serial.print(",");
-  Serial.print(String(phi_acc*RAD2DEG));
-  Serial.print(",");
-  Serial.println(String(kphi.x_est*RAD2DEG));
-  //Serial.println(enc_cnt/2.0); 
+  for(int i=0;i<MOTOR_NUM;i++){
+    Serial.print(ref[i].q*RAD2DEG);
+    Serial.print(",");
+    Serial.print(state[i].q*RAD2DEG);     
+    Serial.print(",");
+  }
+  Serial.println();
 #endif
-#if MOTOR_DEBUG
-  Serial.print(ref.theta*RAD2DEG);
-  Serial.print(",");
-  Serial.println(state.theta*RAD2DEG);
-#endif
-  ref_bfr = ref;
+  //-------------------------------------------------------------------------------------------------------------------------------------/
+  portEXIT_CRITICAL_ISR(&timerMux);
 }
+
 
 void setup() {
-  //serial通信設定
-  while(!Serial);
   Serial.begin(115200);
   Serial.println("started");
-   
-  //9軸センサの設定
-  Wire.begin();
-  mySensor.setWire(&Wire);
-  mySensor.beginAccel();//分散ほぼ0
-  mySensor.beginGyro();//分散0.149^2,ave:-0.73186
-  mySensor.beginMag();
-  sensorId = mySensor.readId();
+  
+  //motor1の設定
+  motor[0].GPIO_setup(GPIO_NUM_4,GPIO_NUM_0);//方向制御ピン設定
+  motor[0].PWM_setup(GPIO_NUM_2,0);//PWMピン設定
+  motor[0].encoder_setup(PCNT_UNIT_0,GPIO_NUM_36,GPIO_NUM_39);//エンコーダカウンタ設定
+  motor[0].set_fb_param(30,0.0,5.0);//ゲイン設定
+  //motor2//エンコーダのみ
+//  motor[1].GPIO_setup(GPIO_NUM_16,GPIO_NUM_17);//方向制御ピン設定
+//  motor[1].PWM_setup(GPIO_NUM_15,0);//PWMピン設定
+  motor[1].encoder_setup(PCNT_UNIT_1,GPIO_NUM_34,GPIO_NUM_35);//エンコーダカウンタ設定
+//  motor[1].set_fb_param(30,0.0,5.0);//ゲイン設定
 
-  //モータの設定
-  pinMode(AIN1,OUTPUT);
-  pinMode(AIN2,OUTPUT);
-  pinMode(PWMA,OUTPUT);
-  TCCR1B = (TCCR1B & 0b11111000) | 0x01;//キャリア周波数32kHzに変更
-  //エンコーダの設定
-  pinMode(TACHOA0_PIN, INPUT);
-  pinMode(TACHOA1_PIN, INPUT);
-  attachInterrupt(0, ENC_READ, CHANGE);//外部割込み
-  attachInterrupt(1, ENC_READ, CHANGE);
-
-  //timer2の設定
-  MsTimer2::set((int)(Ts*1000), timerFire);
-  MsTimer2::start();
-
-  //init
- 
+  //timer割り込み設定
+  timer = timerBegin(0, 80, true);//プリスケーラ設定
+  timerAttachInterrupt(timer, &onTimer, true);//割り込み関数指定
+  timerAlarmWrite(timer, (int)(Ts*1000000), true);//Ts[s]ごとに割り込みが入るように設定
+  timerAlarmEnable(timer);//有効化
 }
-
 void loop() {
-  mySensor.accelUpdate();
-  mySensor.gyroUpdate();
-  
-  
-
 }
