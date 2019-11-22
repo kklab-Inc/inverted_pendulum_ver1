@@ -3,7 +3,7 @@
 #include "kal/kal.h"
 
 //debug
-#define DEBUG 0
+#define DEBUG 1
 
 //motor
 #define MOTOR_NUM 2//片方はエンコーダのみ
@@ -49,12 +49,12 @@ void IRAM_ATTR onTimer() {  /* this function must be placed in IRAM */
   //出力計算
 //  for(int i=0;i<MOTOR_NUM-1;i++){
 //    double u = KP*(ref[i].q-state[i].q) + KD * (ref[i].dq - state[i].dq);
-//    motor[i].drive(u);
+      motor[0].drive(-3.3);
 //  }
 #if DEBUG
   for(int i=0;i<MOTOR_NUM;i++){
-    Serial.print(ref[i].q*RAD2DEG);
-    Serial.print(",");
+//    Serial.print(ref[i].q*RAD2DEG);
+//    Serial.print(",");
     Serial.print(state[i].q*RAD2DEG);     
     Serial.print(",");
   }
