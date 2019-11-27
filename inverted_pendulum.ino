@@ -47,14 +47,14 @@ void IRAM_ATTR onTimer() {  /* this function must be placed in IRAM */
   }
   
   //出力計算
-//  for(int i=0;i<MOTOR_NUM-1;i++){
-//    double u = KP*(ref[i].q-state[i].q) + KD * (ref[i].dq - state[i].dq);
-      motor[0].drive(-3.3);
-//  }
+  for(int i=0;i<MOTOR_NUM-1;i++){
+      double u = 2.0*(ref[i].q-state[i].q) + 0.3 * (ref[i].dq - state[i].dq);
+      motor[0].drive(u);
+  }
 #if DEBUG
   for(int i=0;i<MOTOR_NUM;i++){
-//    Serial.print(ref[i].q*RAD2DEG);
-//    Serial.print(",");
+    Serial.print(ref[i].q*RAD2DEG);
+    Serial.print(",");
     Serial.print(state[i].q*RAD2DEG);     
     Serial.print(",");
   }
@@ -70,9 +70,9 @@ void setup() {
   Serial.println("started");
   
   //motor1の設定
-  motor[0].GPIO_setup(GPIO_NUM_4,GPIO_NUM_0);//方向制御ピン設定
+  motor[0].GPIO_setup(GPIO_NUM_26,GPIO_NUM_25);//方向制御ピン設定
   motor[0].PWM_setup(GPIO_NUM_2,0);//PWMピン設定
-  motor[0].encoder_setup(PCNT_UNIT_0,GPIO_NUM_36,GPIO_NUM_39);//エンコーダカウンタ設定
+  motor[0].encoder_setup(PCNT_UNIT_0,GPIO_NUM_4,GPIO_NUM_5);//エンコーダカウンタ設定
   motor[0].set_fb_param(30,0.0,5.0);//ゲイン設定
   //motor2//エンコーダのみ
 //  motor[1].GPIO_setup(GPIO_NUM_16,GPIO_NUM_17);//方向制御ピン設定
