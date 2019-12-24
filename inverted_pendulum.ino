@@ -77,7 +77,7 @@ void setup() {
   //motor2//エンコーダのみ
 //  motor[1].GPIO_setup(GPIO_NUM_16,GPIO_NUM_17);//方向制御ピン設定
 //  motor[1].PWM_setup(GPIO_NUM_15,0);//PWMピン設定
-  motor[1].encoder_setup(PCNT_UNIT_1,GPIO_NUM_34,GPIO_NUM_35);//エンコーダカウンタ設定
+  motor[1].encoder_setup(PCNT_UNIT_1,GPIO_NUM_18,GPIO_NUM_19);//エンコーダカウンタ設定
 //  motor[1].set_fb_param(30,0.0,5.0);//ゲイン設定
 
   //timer割り込み設定
